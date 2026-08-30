@@ -1,0 +1,57 @@
+name: IAP beküldés review-ra
+
+# A READY_TO_SUBMIT kredit-IAP-okat beküldi review-ra a dedikált
+# inAppPurchaseSubmissions végponton. (Az app-verzió külön, a WAITING_FOR_REVIEW-ban.)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  iapsub:
+    runs-on: ubuntu-latest
+    env:
+      ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+      ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+      ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+    steps:
+      - name: Deps
+        run: pip install pyjwt cryptography requests
+      - name: Beküldés
+        run: |
+          python3 - <<'PY'
+          import os, time, jwt, requests
+          kid=os.environ['ASC_KEY_ID']; iss=os.environ['ASC_ISSUER_ID']; p8=os.environ['ASC_KEY_P8']
+          if 'BEGIN PRIVATE KEY' not in p8:
+              import base64; p8=base64.b64decode(p8).decode()
+          def token(): return jwt.encode({'iss':iss,'iat':int(time.time()),'exp':int(time.time())+1200,'aud':'appstoreconnect-v1'},p8,algorithm='ES256',headers={'kid':kid,'typ':'JWT'})
+          B='https://api.appstoreconnect.apple.com'
+          def H(): return {'Authorization':'Bearer '+token(),'Content-Type':'application/json'}
+          def g(u,**p):
+              r=requests.get(B+u,headers=H(),params=p)
+              if r.status_code>=300: print('GET FAIL',r.status_code,u,r.text[:300])
+              return r.json()
+          def req(m,u,body):
+              r=requests.request(m,B+u,headers=H(),json=body); print(m,u,'->',r.status_code)
+              if r.status_code>=300: print('   ',r.text[:600])
+              return r
+          apps=g('/v1/apps').get('data',[])
+          app=next((a for a in apps if 'tourempire' in (a['attributes'].get('bundleId') or '')),None); aid=app['id']
+          iaps=g(f'/v1/apps/{aid}/inAppPurchasesV2', **{'limit':50}).get('data',[])
+          for ip in iaps:
+              a=ip['attributes']; prod=a.get('productId') or ''
+              if not prod.startswith('tourempire.credits.'): continue
+              if a.get('state')!='READY_TO_SUBMIT':
+                  print(f"{prod}: state={a.get('state')} — kihagyom"); continue
+              # két lehetséges reláció-név próbája
+              ok=False
+              for rel in ('inAppPurchaseV2','inAppPurchase'):
+                  r=req('POST','/v1/inAppPurchaseSubmissions', {'data':{'type':'inAppPurchaseSubmissions',
+                       'relationships':{rel:{'data':{'type':'inAppPurchases','id':ip['id']}}}}})
+                  if r.status_code<300: print(f"{prod}: BEKÜLDVE ({rel})"); ok=True; break
+              if not ok: print(f"{prod}: nem sikerült beküldeni")
+          print("\n=== ÚJ ÁLLAPOT ===")
+          for ip in g(f'/v1/apps/{aid}/inAppPurchasesV2', **{'limit':50}).get('data',[]):
+              a=ip['attributes']
+              if (a.get('productId') or '').startswith('tourempire.credits.'):
+                  print(f"- {a.get('productId')} | state={a.get('state')}")
+          PY
