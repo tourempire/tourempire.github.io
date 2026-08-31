@@ -1,10 +1,10 @@
-name: ASC App Review Notes beállítás
+name: ASC App Review Notes
 
 on:
   workflow_dispatch:
     inputs:
       device:
-        description: 'Tesztelt eszköz + iOS (pl. iPhone 13, iOS 18.5)'
+        description: 'Tesztelt eszkoz + iOS (pl. iPhone 13, iOS 18.5)'
         default: 'iPhone (physical device), latest iOS'
 
 jobs:
@@ -37,31 +37,26 @@ jobs:
               r=requests.request(m,B+u,headers=H(),json=body); print(m,u,'->',r.status_code)
               if r.status_code>=300: print('   ',r.text[:500])
               return r
-          NOTES=f"""Tour Empire — single-player music-tour management simulation game (offline, no account, no login).
-
-2) Tested on: {DEV} (via TestFlight).
-
-3) Description & audience: The player runs a music talent agency: sign artists, plan and run concert tours across a world map, release singles/EPs/albums in the Studio, upgrade facilities, and grow the agency's fame and ranking. Casual tycoon/simulation game, rated 12+. No online multiplayer, no real-world or financial data.
-
-4) Setup & access: No account, login, or credentials required. The game starts immediately on first launch; all features are reachable from the bottom navigation bar. No sample files needed.
-
-5) External services: Google AdMob (optional, non-personalized rewarded video ads only) and Apple StoreKit (in-app purchases). No backend server, no third-party login, no data provider, no AI service. Game progress is stored locally on the device only.
-
-6) Regional differences: The app functions identically in all regions. The interface is localized into 10 languages (text only); gameplay and features are the same everywhere. No region-locked content.
-
-7) Regulated industry / third-party material: Not applicable. All content (music, artwork, artist names) is original or parody; no protected third-party material; no regulated industry.
-
-8) In-App Purchases: Three consumable "credit" packs — 100 credits (EUR 1.99), 550 credits (EUR 7.99), 1200 credits (EUR 14.99). Credits are an optional convenience currency (e.g., auto-arranging a concert setlist, refreshing the scouting list, an extra contract-negotiation attempt, cosmetic themes). The game is fully playable and completable without any purchase. To reach the purchase screen: tap the credit balance in the top status bar, or use any convenience feature — this opens the "Buy Credits" screen listing the three packs. Purchases are processed by Apple StoreKit."""
+          P=[]
+          P.append("Tour Empire is a single-player music-tour management simulation game (offline, no account, no login).")
+          P.append("2) Tested on: "+DEV+" (via TestFlight).")
+          P.append("3) Description & audience: The player runs a music talent agency - sign artists, plan and run concert tours across a world map, release singles/EPs/albums in the Studio, upgrade facilities, and grow the agency's fame and ranking. Casual tycoon/simulation game, rated 12+. No online multiplayer, no real-world or financial data.")
+          P.append("4) Setup & access: No account, login, or credentials are required. The game starts immediately on first launch; all features are reachable from the bottom navigation bar. No sample files needed.")
+          P.append("5) External services: Google AdMob (optional, non-personalized rewarded video ads only) and Apple StoreKit (in-app purchases). No backend server, no third-party login, no data provider, and no AI service. Game progress is stored locally on the device only.")
+          P.append("6) Regional differences: The app functions identically in all regions. The interface is localized into 10 languages (text only); gameplay and features are the same everywhere. No region-locked content.")
+          P.append("7) Regulated industry / third-party material: Not applicable. All content (music, artwork, artist names) is original or parody; no protected third-party material; no regulated industry.")
+          P.append("8) In-App Purchases: Three consumable credit packs - 100 credits (EUR 1.99), 550 credits (EUR 7.99), 1200 credits (EUR 14.99). Credits are an optional convenience currency (e.g., auto-arranging a setlist, refreshing the scouting list, an extra contract-negotiation attempt, cosmetic themes). The game is fully playable and completable without any purchase. To reach the purchase screen, tap the credit balance in the top status bar, or use any convenience feature - this opens the Buy Credits screen listing the three packs. Purchases are processed by Apple StoreKit.")
+          NOTES="\n\n".join(P)
           apps=g('/v1/apps').get('data',[])
           app=next((a for a in apps if 'tourempire' in (a['attributes'].get('bundleId') or '')),None); aid=app['id']
           vs=g(f'/v1/apps/{aid}/appStoreVersions', **{'limit':10}).get('data',[])
           editable={'PREPARE_FOR_SUBMISSION','METADATA_REJECTED','DEVELOPER_REJECTED','REJECTED','INVALID_BINARY'}
           ver=next((v for v in vs if v['attributes'].get('appStoreState') in editable), vs[0] if vs else None)
-          vid=ver['id']; print("Verzió:",ver['attributes'].get('versionString'),ver['attributes'].get('appStoreState'))
+          vid=ver['id']; print("Verzio:",ver['attributes'].get('versionString'),ver['attributes'].get('appStoreState'))
           det=g(f'/v1/appStoreVersions/{vid}/appStoreReviewDetail').get('data')
           if det:
               req('PATCH', f"/v1/appStoreReviewDetails/{det['id']}", {'data':{'type':'appStoreReviewDetails','id':det['id'],'attributes':{'notes':NOTES}}})
           else:
               req('POST','/v1/appStoreReviewDetails', {'data':{'type':'appStoreReviewDetails','attributes':{'notes':NOTES,'demoAccountRequired':False},'relationships':{'appStoreVersion':{'data':{'type':'appStoreVersions','id':vid}}}}})
-          print("KÉSZ — App Review Notes beállítva.")
+          print("KESZ - App Review Notes beallitva.")
           PY
