@@ -97,6 +97,11 @@ jobs:
               b=g(f'/v1/appStoreVersions/{vid}/build').get('data')
               print("Hozzárendelt build:", (b or {}).get('id') if b else "NINCS")
 
+          print("\n=== REVIEW SUBMISSIONS ===")
+          for r0 in g('/v1/reviewSubmissions', **{'filter[app]':aid,'filter[platform]':'IOS','limit':20}).get('data',[]):
+              ra=r0['attributes']
+              print(f"- {r0['id'][:8]} | state={ra.get('state')} | submitted={ra.get('submittedDate')}")
+
           print("\n=== IN-APP PURCHASE TERMÉKEK ===")
           iaps=g(f'/v1/apps/{aid}/inAppPurchasesV2', **{'limit':50}).get('data',[])
           if not iaps: print("(nincs egyetlen IAP-termék sem az appon)")
