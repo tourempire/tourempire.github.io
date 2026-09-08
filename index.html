@@ -4615,7 +4615,11 @@ function syncFrame(){
     A --mapz = 1/zoom a Leaflet-ellenzoomhoz. Telefonon (<768) nincs zoom. */
  const w=Math.round(vv?vv.width:0)||window.innerWidth||480;
  const app=document.getElementById('app'); if(!app)return;
- if(w>=768){
+ /* A CSS-`zoom`-os tablet-kitöltés CSAK a webre (böngésző) való. A NATÍV appban NEM
+    használjuk: a WKWebView (iPad-kompat mód) a `zoom`-ot másképp kezeli, mint a
+    Chromium — ez az onboarding után lefagyáshoz vezetett iPaden. Natívban ezért az
+    app iPhone-módban renderel (max-width:480, középre, teljes magasság), ami bevált. */
+ if(w>=768 && !isNative()){
    const z=Math.min(2.2,Math.max(1.35,w/480));
    app.style.zoom=z;
    document.documentElement.style.setProperty('--mapz',(1/z).toFixed(4));
