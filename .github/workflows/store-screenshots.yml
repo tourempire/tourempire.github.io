@@ -1,0 +1,138 @@
+name: Store screenshotok csere
+
+# Friss JÁTÉKMENET-screenshotokat készít a live webről (Playwright, 6.5" = 1242x2688),
+# beállít egy gazdag játékállapotot, elkapja a fő képernyőket, majd az App Store Connect
+# en-US APP_IPHONE_65 készletében LECSERÉLI a régi képeket az újakra.
+
+on:
+  workflow_dispatch:
+    inputs:
+      url:
+        description: 'A jatek URL-je (?dbg)'
+        default: 'https://tourempire.github.io/?dbg'
+
+jobs:
+  shots:
+    runs-on: ubuntu-latest
+    env:
+      ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+      ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+      ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+      GAME_URL: ${{ inputs.url }}
+    steps:
+      - name: Deps
+        run: pip install pyjwt cryptography requests playwright && python -m playwright install --with-deps chromium
+      - name: General + feltoltes
+        run: |
+          python3 - <<'PY'
+          import os, time, hashlib, jwt, requests
+          from playwright.sync_api import sync_playwright
+          URL=os.environ['GAME_URL']
+
+          SETUP = r"""() => {
+            try {
+              var G=window.__G, S=G.S;
+              S.money=2650000; S.rep=380; S.week=32; S.credits=925; S.toursDone=7; S.earned=8200000;
+              S.agency='Star Agency';
+              S.obDone=true; S.ob=null; S.started=true; S.detail=null;
+              var all=Object.keys(G.AM);
+              S.roster=all.slice(0,3);
+              S.roster.forEach(function(id,i){
+                var st=G.artState(id);
+                try{ Object.keys(st.fans).forEach(function(r){ st.fans[r]=Math.round(48+Math.random()*46); }); }catch(e){}
+                st.streams=Math.round(2200000+i*1800000);
+                st.morale=84; st.energy=90; st.hype=0.28; st.rels=3+i; st.lastCritic=82;
+              });
+              if(G.save)G.save();
+              var m=document.getElementById('modal'); if(m){m.className='';m.innerHTML='';}
+              G.render();
+            } catch(e){ return 'ERR '+e.message; }
+            return 'ok';
+          }"""
+
+          shots=[]  # (fileName, PngBytes)
+          with sync_playwright() as p:
+              b=p.chromium.launch(args=['--no-sandbox'])
+              pg=b.new_page(viewport={'width':414,'height':896}, device_scale_factor=3)  # 1242x2688 (6.5")
+              pg.goto(URL, wait_until='networkidle', timeout=60000)
+              pg.wait_for_function("() => window.__G && window.__G.S && window.__G.render", timeout=30000)
+              r=pg.evaluate(SETUP); print("setup:", r)
+              pg.wait_for_timeout(1200)
+              def shoot(name, js=None, wait=900):
+                  if js:
+                      try: pg.evaluate(js)
+                      except Exception as e: print(name,"js err",e)
+                  pg.wait_for_timeout(wait)
+                  data=pg.screenshot()
+                  shots.append((name, data)); print("shot", name, len(data),"b")
+              # 1) Iroda (office)
+              shoot("01_office.png", "()=>{window.__G.S.tab='iroda';window.__G.S.detail=null;window.__G.render();}")
+              # 2) Eloadok lista
+              shoot("02_artists.png", "()=>{window.__G.S.tab='eloadok';window.__G.S.detail=null;window.__G.render();}")
+              # 3) Eloado reszletek (statuszsavok, rajongok, karrier)
+              shoot("03_detail.png", "()=>{var G=window.__G;G.S.tab='eloadok';G.openDetail(G.S.roster[0]);}", 1100)
+              # 4) Studio (streaming, kiadas)
+              shoot("04_studio.png", "()=>{var G=window.__G;G.S.detail=null;G.S.tab='studio';G.S.studio=G.S.roster[0];G.render();}")
+              # 5) Fejlesztes (upgrade-fa)
+              shoot("05_upgrades.png", "()=>{var G=window.__G;G.S.detail=null;G.S.tab='fejlesztes';G.render();}")
+              b.close()
+          print("Osszes shot:", len(shots))
+
+          # ---- ASC feltoltes ----
+          kid=os.environ['ASC_KEY_ID']; iss=os.environ['ASC_ISSUER_ID']; p8=os.environ['ASC_KEY_P8']
+          if 'BEGIN PRIVATE KEY' not in p8:
+              import base64; p8=base64.b64decode(p8).decode()
+          def token(): return jwt.encode({'iss':iss,'iat':int(time.time()),'exp':int(time.time())+1200,'aud':'appstoreconnect-v1'},p8,algorithm='ES256',headers={'kid':kid,'typ':'JWT'})
+          B='https://api.appstoreconnect.apple.com'
+          def H(): return {'Authorization':'Bearer '+token(),'Content-Type':'application/json'}
+          def g(u,**q):
+              r=requests.get(B+u,headers=H(),params=q)
+              if r.status_code>=300: print('GET',r.status_code,u,r.text[:200])
+              return r.json()
+          def req(m,u,body=None):
+              r=requests.request(m,B+u,headers=H(),json=body); print(m,u.split('?')[0],'->',r.status_code)
+              if r.status_code>=300: print('   ',r.text[:400])
+              return r
+          apps=g('/v1/apps').get('data',[])
+          app=next((a for a in apps if 'tourempire' in (a['attributes'].get('bundleId') or '')),None); aid=app['id']
+          vs=g(f'/v1/apps/{aid}/appStoreVersions', **{'limit':10}).get('data',[])
+          ed={'PREPARE_FOR_SUBMISSION','METADATA_REJECTED','DEVELOPER_REJECTED','REJECTED','INVALID_BINARY'}
+          ver=next((v for v in vs if v['attributes'].get('appStoreState') in ed), vs[0]); vid=ver['id']
+          loc=next((l for l in g(f'/v1/appStoreVersions/{vid}/appStoreVersionLocalizations').get('data',[]) if l['attributes'].get('locale')=='en-US'), None)
+          lid=loc['id']; print("en-US loc:", lid)
+          sets=g(f'/v1/appStoreVersionLocalizations/{lid}/appScreenshotSets').get('data',[])
+          sset=next((s for s in sets if s['attributes'].get('screenshotDisplayType')=='APP_IPHONE_65'), None)
+          if not sset:
+              r=req('POST','/v1/appScreenshotSets', {'data':{'type':'appScreenshotSets','attributes':{'screenshotDisplayType':'APP_IPHONE_65'},'relationships':{'appStoreVersionLocalization':{'data':{'type':'appStoreVersionLocalizations','id':lid}}}}})
+              sset={'id':r.json()['data']['id']}
+          setId=sset['id']; print("APP_IPHONE_65 set:", setId)
+          # regi kepek torlese
+          for sc in g(f'/v1/appScreenshotSets/{setId}/appScreenshots').get('data',[]):
+              req('DELETE', f"/v1/appScreenshots/{sc['id']}")
+          # ujak feltoltese
+          new_ids=[]
+          for name,data in shots:
+              md5=hashlib.md5(data).hexdigest()
+              r=req('POST','/v1/appScreenshots', {'data':{'type':'appScreenshots','attributes':{'fileName':name,'fileSize':len(data)},'relationships':{'appScreenshotSet':{'data':{'type':'appScreenshotSets','id':setId}}}}})
+              if r.status_code>=300: continue
+              d=r.json()['data']; scid=d['id']; ops=d['attributes'].get('uploadOperations') or []
+              ok=True
+              for op in ops:
+                  hdrs={h['name']:h['value'] for h in (op.get('requestHeaders') or [])}
+                  off=op.get('offset',0); ln=op.get('length',len(data))
+                  up=requests.request(op.get('method','PUT'), op['url'], headers=hdrs, data=data[off:off+ln])
+                  if up.status_code>=300: print('  upload FAIL',up.status_code,up.text[:150]); ok=False
+              if not ok: continue
+              c=req('PATCH', f"/v1/appScreenshots/{scid}", {'data':{'type':'appScreenshots','id':scid,'attributes':{'uploaded':True,'sourceFileChecksum':md5}}})
+              if c.status_code<300: new_ids.append(scid); print("  OK", name)
+          # sorrend
+          if new_ids:
+              req('PATCH', f"/v1/appScreenshotSets/{setId}/relationships/appScreenshots", {'data':[{'type':'appScreenshots','id':x} for x in new_ids]})
+          print("Feltoltott uj kepek:", len(new_ids))
+          PY
+      - name: Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: store-screenshots
+          path: "*.png"
+          if-no-files-found: ignore
