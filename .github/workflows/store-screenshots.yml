@@ -29,9 +29,22 @@ jobs:
           from playwright.sync_api import sync_playwright
           URL=os.environ['GAME_URL']
 
-          SETUP = r"""() => {
+          START = r"""() => {
+            try {
+              var G=window.__G;
+              try{ if(G.setLang) G.setLang('en'); }catch(e){}
+              // a kezdo-overlay eltuntetese: a 'Gyors indites/Quick start' gomb megnyomasa
+              var btns=[].slice.call(document.querySelectorAll('button'));
+              var qs=btns.find(function(b){return /quick start|gyors ind|default|alapbe/i.test(b.textContent);});
+              if(!qs) qs=btns.find(function(b){return /^\s*(start|kezd)/i.test(b.textContent);});
+              if(qs){ qs.click(); return 'clicked:'+qs.textContent.trim().slice(0,24); }
+              return 'no-start-btn';
+            } catch(e){ return 'ERR '+e.message; }
+          }"""
+          STATE = r"""() => {
             try {
               var G=window.__G, S=G.S;
+              try{ if(G.setLang) G.setLang('en'); }catch(e){}
               S.money=2650000; S.rep=380; S.week=32; S.credits=925; S.toursDone=7; S.earned=8200000;
               S.agency='Star Agency';
               S.obDone=true; S.ob=null; S.started=true; S.detail=null;
@@ -45,9 +58,11 @@ jobs:
               });
               if(G.save)G.save();
               var m=document.getElementById('modal'); if(m){m.className='';m.innerHTML='';}
-              G.render();
+              var ob=document.getElementById('ob'); if(ob){ob.className='';ob.innerHTML='';}
+              var obb=document.getElementById('obbar'); if(obb){obb.className='';obb.innerHTML='';}
+              S.tab='iroda'; G.render();
+              return 'started='+S.started+' roster='+S.roster.length+' tab='+S.tab;
             } catch(e){ return 'ERR '+e.message; }
-            return 'ok';
           }"""
 
           shots=[]  # (fileName, PngBytes)
@@ -56,14 +71,17 @@ jobs:
               pg=b.new_page(viewport={'width':414,'height':896}, device_scale_factor=3)  # 1242x2688 (6.5")
               pg.goto(URL, wait_until='networkidle', timeout=60000)
               pg.wait_for_function("() => window.__G && window.__G.S && window.__G.render", timeout=30000)
-              r=pg.evaluate(SETUP); print("setup:", r)
-              pg.wait_for_timeout(1200)
+              print("start:", pg.evaluate(START))
+              pg.wait_for_timeout(900)
+              print("state:", pg.evaluate(STATE))
+              pg.wait_for_timeout(1300)
               def shoot(name, js=None, wait=900):
                   if js:
                       try: pg.evaluate(js)
                       except Exception as e: print(name,"js err",e)
                   pg.wait_for_timeout(wait)
                   data=pg.screenshot()
+                  open(name,'wb').write(data)
                   shots.append((name, data)); print("shot", name, len(data),"b")
               # 1) Iroda (office)
               shoot("01_office.png", "()=>{window.__G.S.tab='iroda';window.__G.S.detail=null;window.__G.render();}")
