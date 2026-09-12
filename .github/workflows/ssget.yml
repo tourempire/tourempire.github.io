@@ -15,14 +15,18 @@ jobs:
           kid=os.environ['ASC_KEY_ID'];iss=os.environ['ASC_ISSUER_ID'];p8=os.environ['ASC_KEY_P8']
           if 'BEGIN PRIVATE KEY' not in p8:
               import base64;p8=base64.b64decode(p8).decode()
-          tok=jwt.encode({'iss':iss,'iat':int(time.time()),'exp':int(time.time())+1200,'aud':'appstoreconnect-v1'},p8,algorithm='ES256',headers={'kid':kid,'typ':'JWT'})
-          H={'Authorization':'Bearer '+tok}
+          def H():
+              tok=jwt.encode({'iss':iss,'iat':int(time.time()),'exp':int(time.time())+1200,'aud':'appstoreconnect-v1'},p8,algorithm='ES256',headers={'kid':kid,'typ':'JWT'})
+              return {'Authorization':'Bearer '+tok}
           B='https://api.appstoreconnect.apple.com'
           sid='ff1cac4e-e4fc-403d-a15b-980109214ee7'
-          d=requests.get(B+f'/v1/appScreenshotSets/{sid}/appScreenshots',headers=H).json().get('data',[])
+          d=requests.get(B+f'/v1/appScreenshotSets/{sid}/appScreenshots',headers=H()).json().get('data',[])
           for s in d:
-            a=s['attributes'];ia=a.get('imageAsset') or {}
-            tu=ia.get('templateUrl')
-            url=tu.replace('{w}','1242').replace('{h}','2688').replace('{f}','png') if tu else None
-            print(a.get('fileName'),'| state=',(a.get('assetDeliveryState') or {}).get('state'),'|',url)
+            fn=s['attributes'].get('fileName')
+            if fn=='04_studio.png':
+              r=requests.delete(B+f"/v1/appScreenshots/{s['id']}",headers=H())
+              print('DELETE',fn,r.status_code)
+          # maradek
+          d2=requests.get(B+f'/v1/appScreenshotSets/{sid}/appScreenshots',headers=H()).json().get('data',[])
+          print('Maradt:',[x['attributes'].get('fileName') for x in d2])
           PY
