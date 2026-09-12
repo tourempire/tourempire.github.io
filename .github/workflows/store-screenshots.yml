@@ -75,11 +75,17 @@ jobs:
               pg.wait_for_timeout(900)
               print("state:", pg.evaluate(STATE))
               pg.wait_for_timeout(1300)
-              def shoot(name, js=None, wait=900):
+              TR="()=>{try{var G=window.__G; if(G.translateUI){G.translateUI(document.body); G.translateUI(document.getElementById('app'));}}catch(e){}}"
+              def shoot(name, js=None, wait=1100):
                   if js:
                       try: pg.evaluate(js)
                       except Exception as e: print(name,"js err",e)
+                  try: pg.evaluate(TR)
+                  except Exception as e: pass
                   pg.wait_for_timeout(wait)
+                  try: pg.evaluate(TR)   # a MutationObserver utan meg egyszer, szinkron
+                  except Exception as e: pass
+                  pg.wait_for_timeout(250)
                   data=pg.screenshot()
                   open(name,'wb').write(data)
                   shots.append((name, data)); print("shot", name, len(data),"b")
