@@ -81,7 +81,11 @@ jobs:
           # mind a 4 orientációt iPaden. Így a portré-only iPaden is engedélyezett (nincs Split View).
           /usr/libexec/PlistBuddy -c "Delete :UIRequiresFullScreen" "$PLIST" 2>/dev/null || true
           /usr/libexec/PlistBuddy -c "Add :UIRequiresFullScreen bool true" "$PLIST"
-          echo "verzió $VER · build ${{ github.run_number }} · orientation: Portrait-only · UIRequiresFullScreen: true"
+          # App Tracking (ATT): NEM kérünk tracking-engedélyt (nem-személyre-szabott hirdetés).
+          # Töröljük az esetleges NSUserTrackingUsageDescription kulcsot, hogy ne legyen olyan
+          # rendszer-engedélykérő szöveg, amely az app nyelvétől eltérhetne (Guideline 4).
+          /usr/libexec/PlistBuddy -c "Delete :NSUserTrackingUsageDescription" "$PLIST" 2>/dev/null || true
+          echo "verzió $VER · build ${{ github.run_number }} · orientation: Portrait-only · UIRequiresFullScreen: true · ATT: nincs"
           /usr/libexec/PlistBuddy -c "Print :UISupportedInterfaceOrientations" "$PLIST"
           /usr/libexec/PlistBuddy -c "Print :UISupportedInterfaceOrientations~ipad" "$PLIST"
           # (Audio: a normál WebKit-viselkedést hagyjuk — a hang a néma kapcsolót követi, mint a legtöbb

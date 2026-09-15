@@ -4415,7 +4415,10 @@ let admobReady=false;
 function admobInit(){
  const A=plug('AdMob');
  if(!A||admobReady)return Promise.resolve(!!A);
- return A.initialize({initializeForTesting:!!STORE_CFG.admob.test})
+ /* requestTrackingAuthorization:false → NEM kérünk App Tracking (ATT) engedélyt.
+    Nem-személyre-szabott hirdetést szolgálunk ki (npa:true), ehhez nem kell tracking.
+    Így nincs rendszer-engedélykérő ablak, amely az app nyelvétől eltérhetne (Guideline 4). */
+ return A.initialize({initializeForTesting:!!STORE_CFG.admob.test,requestTrackingAuthorization:false})
    .then(function(){admobReady=true;return true;})
    .catch(function(){return false;});
 }
