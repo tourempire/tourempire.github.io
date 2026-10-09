@@ -4549,7 +4549,9 @@ function pinIcon(city,ord,done){const on=ord>0;return L.divIcon({className:'',ic
   html:`<div class="pin ${on?'on':''} ${done?'done':''}"><div class="dot">${on?ord:''}</div></div>`});}
 function initMap(){if(!HAS_MAP)return;teardownMap();
  G.map=L.map('lmap',{worldCopyJump:true,zoomControl:true,attributionControl:true,minZoom:1}).setView([25,12],2);
- L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{subdomains:'abcd',maxZoom:19,attribution:'&copy; OpenStreetMap &copy; CARTO'}).addTo(G.map);
+ /* Sötét térkép-csempe: Esri Dark Gray (KULCS NÉLKÜL működik). A korábbi CARTO
+    ingyenes csempéit 2024-ben API-kulcs-kötelessé tették → "API key required" vízjel. */
+ L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}',{maxZoom:16,maxNativeZoom:16,attribution:'Tiles &copy; Esri'}).addTo(G.map);
  const st=actStops(),dc=doneCount();
  cityList().forEach(c=>{const ord=st.findIndex(s=>s.city===c.id)+1;
   const m=L.marker([c.lat,c.lon],{icon:pinIcon(c,ord,ord>0&&ord<=dc),title:c.n}).addTo(G.map);
