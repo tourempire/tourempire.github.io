@@ -97,6 +97,18 @@ jobs:
                        'attributes':dict(body_attrs, locale=loc),
                        'relationships':{'appStoreVersion':{'data':{'type':'appStoreVersions','id':vid}}}}})
 
+          # GAME CENTER kikapcsolasa a verzion: az app nem hasznal GC, a build nem tartalmazza
+          # az entitlementet -> "build indicates game center disabled" hiba kulonben.
+          try:
+              gc=g(f'/v1/appStoreVersions/{vid}/gameCenterAppVersion').get('data')
+              if gc:
+                  print("GC app version:", gc['id'], gc['attributes'])
+                  req('PATCH', f"/v1/gameCenterAppVersions/{gc['id']}", {'data':{'type':'gameCenterAppVersions','id':gc['id'],'attributes':{'enabled':False}}})
+              else:
+                  print("GC app version: nincs")
+          except Exception as e:
+              print("GC check err:", e)
+
           # screenshot-helyzet az uj verzion
           for loc,l in {l['attributes']['locale']:l for l in g(f'/v1/appStoreVersions/{vid}/appStoreVersionLocalizations').get('data',[])}.items():
               sets=g(f"/v1/appStoreVersionLocalizations/{l['id']}/appScreenshotSets").get('data',[])
