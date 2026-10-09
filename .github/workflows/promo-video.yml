@@ -54,8 +54,9 @@ jobs:
           with sync_playwright() as p:
               b=p.chromium.launch(args=['--no-sandbox'])
               ctx=b.new_context(viewport={'width':480,'height':854}, device_scale_factor=2,
-                                record_video_dir='vid', record_video_size={'width':960,'height':1708})
+                                record_video_dir='vid', record_video_size={'width':480,'height':854})
               pg=ctx.new_page()
+              t_start=time.time()   # a video a page letrejottekor indul
               pg.goto(URL, wait_until='networkidle', timeout=60000)
               pg.wait_for_function("() => window.__G && window.__G.S && window.__G.render", timeout=30000)
               print("start:", pg.evaluate(START)); pg.wait_for_timeout(600)
@@ -80,7 +81,8 @@ jobs:
               beat("()=>{var G=window.__G;G.S.detail=null;G.S.tab='studio';G.S.studio=G.S.roster[0];G.render();}", 3000, scroll=300)
               beat("()=>{var G=window.__G;G.S.tab='fejlesztes';G.render();}", 2800)
               beat("()=>{window.__G.S.tab='iroda';window.__G.render();}", 1800)
-              offset=max(0.0, t_beats - (pg.video and 0 or 0))
+              offset=max(0.0, (t_beats - t_start) - 0.3)   # a beats elott eltelt ido = ennyit vagunk az elejerol
+              print("offset:", round(offset,2))
               ctx.close(); b.close()
           raw=sorted(glob.glob('vid/*.webm'))[0]
           print("raw video:", raw)
@@ -88,24 +90,18 @@ jobs:
           # Az offset = a setup ota eltelt ido a felvetel kezdetetol. A felvetel a page letrejottekor indul;
           # a goto+setup kb. ennyi ido. Vagjuk le az elejet, hogy egybol a jatekmenet lassodjon.
           # (Biztonsagi tartalek: -0.4s)
-          import json
-          # pontos offset: a page letrejotte ota t_beats-ig; ezt kozelitjuk a felvetel-hosszbol
-          # egyszeruen: a vegso 15s-t vesszuk a vegerol visszafele nem jo (setup az elejen van),
-          # ezert az elejerol vagunk annyit, amennyi a beats elott eltelt.
-          # Playwright nem adja ki a pontos video-kezdest; tapasztalati vagas: 5.5s.
-          CUT=5.5
           font="/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
-          caps=[(0.2,2.9,"BUILD YOUR MUSIC EMPIRE",70),
-                (3.0,5.6,"Sign the biggest stars",58),
-                (5.7,8.7,"Grow their fame and fanbase",54),
-                (8.8,11.7,"Release hits in the studio",56),
-                (11.8,15.0,"TOUR EMPIRE  -  Free on the App Store",56)]
+          caps=[(0.2,2.9,"BUILD YOUR MUSIC EMPIRE",62),
+                (3.0,5.6,"Sign the biggest stars",60),
+                (5.7,8.7,"Grow their fame and fanbase",52),
+                (8.8,11.7,"Release hits in the studio",54),
+                (11.8,15.0,"TOUR EMPIRE  -  Free on the App Store",44)]
           vf=["scale=1080:1920:flags=lanczos","setsar=1","fps=30"]
           for a,z,txt,fs in caps:
-              vf.append(("drawtext=fontfile=%s:text=%s:fontcolor=white:fontsize=%d:box=1:boxcolor=black@0.45:"
+              vf.append(("drawtext=fontfile=%s:text=%s:fontcolor=white:fontsize=%d:box=1:boxcolor=black@0.5:"
                          "boxborderw=22:x=(w-text_w)/2:y=h-430:enable='between(t,%s,%s)'")%(font,txt,fs,a,z))
           vfs=",".join(vf)
-          cmd=["ffmpeg","-y","-ss",str(CUT),"-i",raw,"-t","15","-vf",vfs,
+          cmd=["ffmpeg","-y","-ss",str(round(offset,2)),"-i",raw,"-t","15","-vf",vfs,
                "-c:v","libx264","-pix_fmt","yuv420p","-profile:v","high","-crf","20",
                "-movflags","+faststart","-an","promo.mp4"]
           print("ffmpeg:", " ".join(cmd[:6]),"...")
