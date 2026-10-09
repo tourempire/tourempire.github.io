@@ -1,0 +1,139 @@
+name: ASC frissítés (1.0.1)
+
+# Létrehoz egy új App Store verziót (1.0.1), átmásolja a metaadatot az előző verzióból
+# (ha kell), beállítja a What's New-t, rákötteti a buildet, és (confirm=IGEN) beküldi.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Új verzió-szám'
+        default: '1.0.1'
+      build_number:
+        description: 'Build szám'
+        default: '56'
+      whats_new:
+        description: "What's New (release notes)"
+        default: 'The in-game world map now loads correctly. Plus small fixes and improvements. Thanks for playing!'
+      confirm:
+        description: 'Beküldés review-ra? Írd: IGEN'
+        default: 'NEM'
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    env:
+      ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+      ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+      ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+      VSTR: ${{ inputs.version }}
+      BNUM: ${{ inputs.build_number }}
+      WNEW: ${{ inputs.whats_new }}
+      CONFIRM: ${{ inputs.confirm }}
+    steps:
+      - name: Deps
+        run: pip install pyjwt cryptography requests
+      - name: Frissítés
+        run: |
+          python3 - <<'PY'
+          import os, time, jwt, requests
+          kid=os.environ['ASC_KEY_ID']; iss=os.environ['ASC_ISSUER_ID']; p8=os.environ['ASC_KEY_P8']
+          VSTR=os.environ['VSTR'].strip(); BNUM=os.environ['BNUM'].strip()
+          WNEW=os.environ['WNEW'].strip(); CONFIRM=os.environ['CONFIRM'].strip()
+          if 'BEGIN PRIVATE KEY' not in p8:
+              import base64; p8=base64.b64decode(p8).decode()
+          def token(): return jwt.encode({'iss':iss,'iat':int(time.time()),'exp':int(time.time())+1200,'aud':'appstoreconnect-v1'},p8,algorithm='ES256',headers={'kid':kid,'typ':'JWT'})
+          B='https://api.appstoreconnect.apple.com'
+          def H(): return {'Authorization':'Bearer '+token(),'Content-Type':'application/json'}
+          def g(u,**p):
+              r=requests.get(B+u,headers=H(),params=p)
+              if r.status_code>=300: print('GET',r.status_code,u,r.text[:300])
+              return r.json()
+          def req(m,u,body=None):
+              r=requests.request(m,B+u,headers=H(),json=body); print(m,u.split('?')[0],'->',r.status_code)
+              if r.status_code>=300: print('   ',r.text[:500])
+              return r
+
+          apps=g('/v1/apps').get('data',[])
+          app=next((a for a in apps if 'tourempire' in (a['attributes'].get('bundleId') or '')),None); aid=app['id']
+          print("App:",aid)
+          vs=g(f'/v1/apps/{aid}/appStoreVersions', **{'limit':15}).get('data',[])
+          for v in vs: print("  verzió:",v['attributes'].get('versionString'),v['attributes'].get('appStoreState'),v['id'])
+
+          # cel-verzio: letezik-e mar 1.0.1?
+          ver=next((v for v in vs if v['attributes'].get('versionString')==VSTR), None)
+          if not ver:
+              r=req('POST','/v1/appStoreVersions', {'data':{'type':'appStoreVersions',
+                   'attributes':{'platform':'IOS','versionString':VSTR},
+                   'relationships':{'app':{'data':{'type':'apps','id':aid}}}}})
+              if r.status_code>=300: raise SystemExit(1)
+              ver=r.json()['data']; print("Uj verzio letrehozva:",VSTR)
+          vid=ver['id']; print("Verzio:",VSTR,ver['attributes'].get('appStoreState'),vid)
+
+          # elozo (legutobbi READY/approved) verzio metaadat-forrasnak
+          prev=next((v for v in vs if v['id']!=vid), None)
+          # uj verzio localizations
+          newlocs={l['attributes']['locale']:l for l in g(f'/v1/appStoreVersions/{vid}/appStoreVersionLocalizations').get('data',[])}
+          print("Uj verzio localizations:", list(newlocs.keys()))
+          prevlocs={}
+          if prev:
+              prevlocs={l['attributes']['locale']:l for l in g(f"/v1/appStoreVersions/{prev['id']}/appStoreVersionLocalizations").get('data',[])}
+
+          FIELDS=['description','keywords','promotionalText','marketingUrl','supportUrl','whatsNew']
+          for loc,pl in prevlocs.items():
+              pa=pl['attributes']
+              body_attrs={k:pa.get(k) for k in FIELDS if pa.get(k)}
+              body_attrs['whatsNew']=WNEW
+              if loc in newlocs:
+                  nl=newlocs[loc]
+                  # ha mar van description (atmasolodott), csak a whatsNew-t irjuk; kulonben mindent
+                  if nl['attributes'].get('description'):
+                      upd={'whatsNew':WNEW}
+                  else:
+                      upd=body_attrs
+                  req('PATCH', f"/v1/appStoreVersionLocalizations/{nl['id']}", {'data':{'type':'appStoreVersionLocalizations','id':nl['id'],'attributes':upd}})
+              else:
+                  req('POST','/v1/appStoreVersionLocalizations', {'data':{'type':'appStoreVersionLocalizations',
+                       'attributes':dict(body_attrs, locale=loc),
+                       'relationships':{'appStoreVersion':{'data':{'type':'appStoreVersions','id':vid}}}}})
+
+          # screenshot-helyzet az uj verzion
+          for loc,l in {l['attributes']['locale']:l for l in g(f'/v1/appStoreVersions/{vid}/appStoreVersionLocalizations').get('data',[])}.items():
+              sets=g(f"/v1/appStoreVersionLocalizations/{l['id']}/appScreenshotSets").get('data',[])
+              tot=0
+              for s in sets:
+                  tot+=len(g(f"/v1/appScreenshotSets/{s['id']}/appScreenshots").get('data',[]))
+              print(f"  screenshot [{loc}]: setek={len(sets)} kepek={tot}")
+
+          # build 56 rakotes
+          builds=g('/v1/builds', **{'filter[app]':aid,'limit':20,'sort':'-version'}).get('data',[])
+          bd=next((b for b in builds if b['attributes'].get('version')==BNUM), None)
+          if not bd:
+              print(f"!!! Nincs build {BNUM} (meg nem toltodott fel / nem VALID). Elerheto:",[b['attributes'].get('version') for b in builds[:5]]); raise SystemExit(1)
+          if bd['attributes'].get('processingState')!='VALID':
+              print(f"!!! Build {BNUM} meg nem VALID — varj, futtasd ujra."); raise SystemExit(1)
+          req('PATCH', f'/v1/builds/{bd["id"]}', {'data':{'type':'builds','id':bd['id'],'attributes':{'usesNonExemptEncryption':False}}})
+          req('PATCH', f'/v1/appStoreVersions/{vid}/relationships/build', {'data':{'type':'builds','id':bd['id']}})
+          print("Build rakotve:", BNUM)
+
+          if CONFIRM!='IGEN':
+              print("\n=== SZARAZ FUTAS (confirm != IGEN) — NEM kuldtem be. Ellenorizd a screenshot-sorokat fent! ===")
+              raise SystemExit(0)
+
+          # bekuldes (frissitesnel az IAP mar jovahagyva, nem kell ujra)
+          rss=g('/v1/reviewSubmissions', **{'filter[app]':aid,'filter[platform]':'IOS','limit':20}).get('data',[])
+          openone=next((r0 for r0 in rss if r0['attributes'].get('state') in ('READY_FOR_REVIEW','UNRESOLVED_ISSUES')), None)
+          if openone: sid=openone['id']; print("Meglevo submission:",sid)
+          else:
+              r=req('POST','/v1/reviewSubmissions', {'data':{'type':'reviewSubmissions','attributes':{'platform':'IOS'},'relationships':{'app':{'data':{'type':'apps','id':aid}}}}})
+              if r.status_code>=300: raise SystemExit(1)
+              sid=r.json()['data']['id']; print("Uj submission:",sid)
+          items=g(f'/v1/reviewSubmissions/{sid}/items').get('data',[])
+          if not any((it.get('relationships',{}).get('appStoreVersion',{}).get('data') or {}).get('id')==vid for it in items):
+              r=req('POST','/v1/reviewSubmissionItems', {'data':{'type':'reviewSubmissionItems','relationships':{'reviewSubmission':{'data':{'type':'reviewSubmissions','id':sid}},'appStoreVersion':{'data':{'type':'appStoreVersions','id':vid}}}}})
+              if r.status_code>=300: print("!!! Item hiba — valoszinuleg hianyzo screenshot. Futtasd a store-screenshots-ot a verziohoz, aztan ujra."); raise SystemExit(1)
+          r=req('PATCH', f'/v1/reviewSubmissions/{sid}', {'data':{'type':'reviewSubmissions','id':sid,'attributes':{'submitted':True}}})
+          if r.status_code>=300: raise SystemExit(1)
+          st=g(f'/v1/reviewSubmissions/{sid}').get('data',{}).get('attributes',{}).get('state')
+          print("\n=== BEKULDVE 1.0.1. Allapot:",st,"===")
+          PY
