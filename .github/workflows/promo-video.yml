@@ -39,6 +39,7 @@ jobs:
             try{ if(G.setLang) G.setLang('en'); }catch(e){}
             S.money=2650000;S.rep=380;S.week=32;S.credits=925;S.toursDone=7;S.earned=8200000;S.agency='Star Agency';
             S.obDone=true;S.ob=null;S.started=true;S.detail=null;
+            S.seenMini={lights:1,drum:1,piano:1,concert:1};   // rovid (3) visszaszamlalas a 10 helyett
             var all=Object.keys(G.AM);S.roster=all.slice(0,3);
             S.roster.forEach(function(id,i){var st=G.artState(id);
               try{Object.keys(st.fans).forEach(function(r){st.fans[r]=Math.round(52+Math.random()*44);});}catch(e){}
@@ -80,9 +81,9 @@ jobs:
                       pg.wait_for_timeout(hold)
               beat("()=>{window.__G.S.tab='iroda';window.__G.S.detail=null;window.__G.render();}", 1800)                 # hook / office
               beat("()=>{window.__G.S.tab='eloadok';window.__G.S.detail=null;window.__G.render();}", 1500)              # roster
-              beat("()=>{var G=window.__G;try{G.S.detail=null;G.startTour(G.S.roster[0]);}catch(e){}G.S.tab='terkep';G.render();}", 2000)  # world map
-              beat("()=>{var G=window.__G;G.S.tour=null;try{G.closeMini&&G.closeMini(false);}catch(e){}("+LIVE+")();try{G.openLights(0);return 'lights';}catch(e){return 'ERR '+e.message;}}", 5000)   # FENY-SHOW
-              beat("()=>{var G=window.__G;try{G.closeMini&&G.closeMini(false);}catch(e){}("+LIVE+")();try{G.openMini(0);return 'drum';}catch(e){return 'ERR '+e.message;}}", 5000)                        # DOBOLOS
+              beat("()=>{var G=window.__G;try{G.S.detail=null;G.startTour(G.S.roster[0]);}catch(e){}G.S.tab='terkep';G.render();}", 1800)  # world map
+              beat("()=>{var G=window.__G;G.S.tour=null;try{G.closeMini&&G.closeMini(false);}catch(e){}("+LIVE+")();try{G.openLights(0);return 'lights';}catch(e){return 'ERR '+e.message;}}", 5500)   # FENY-SHOW
+              beat("()=>{var G=window.__G;try{G.closeMini&&G.closeMini(false);}catch(e){}("+LIVE+")();try{G.openMini(0);return 'drum';}catch(e){return 'ERR '+e.message;}}", 5500)                        # DOBOLOS
               beat("()=>{var G=window.__G,S=G.S;try{G.closeMini&&G.closeMini(false);}catch(e){}S.live=null;S.tour=null;S.detail=null;S.tab='studio';S.studio=S.roster[0];G.render();return 'studio';}", 1500)  # studio
               beat("()=>{window.__G.S.tab='iroda';window.__G.render();}", 2300)                                        # final / outro
               offset=max(0.0, (t_beats - t_start) - 0.3)
@@ -94,11 +95,11 @@ jobs:
           font="/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
           caps=[(0.1,1.8,"FROM GARAGE TO GLOBAL EMPIRE",50),
                 (2.0,3.3,"SIGN THE BIGGEST STARS",58),
-                (3.5,5.3,"PLAN WORLD TOURS",64),
-                (5.7,10.2,"RUN THE LIGHT SHOW",62),
-                (10.7,15.2,"HIT EVERY BEAT",64),
-                (15.5,16.8,"DROP #1 HITS",62),
-                (16.9,19.0,"TOUR EMPIRE  -  FREE ON THE APP STORE",42)]
+                (3.5,5.1,"PLAN WORLD TOURS",64),
+                (5.5,10.5,"RUN THE LIGHT SHOW",62),
+                (11.0,16.0,"HIT EVERY BEAT",64),
+                (16.3,17.6,"DROP #1 HITS",62),
+                (17.8,19.9,"TOUR EMPIRE  -  FREE ON THE APP STORE",42)]
           vf=["scale=1080:1920:flags=lanczos","setsar=1","fps=30",
               "zoompan=z='min(pzoom+0.0006,1.12)':d=1:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=1080x1920:fps=30"]
           for a,z,txt,fs in caps:
@@ -106,7 +107,7 @@ jobs:
               vf.append(("drawtext=fontfile=%s:text=%s:fontcolor=white:fontsize=%d:box=1:boxcolor=black@0.5:"
                          "boxborderw=24:x=(w-text_w)/2:y=h-440:alpha='%s':enable='between(t,%s,%s)'")%(font,txt,fs,al,a,z))
           vfs=",".join(vf)
-          cmd=["ffmpeg","-y","-ss",str(round(offset,2)),"-i",raw,"-t","19","-vf",vfs,
+          cmd=["ffmpeg","-y","-ss",str(round(offset,2)),"-i",raw,"-t","20","-vf",vfs,
                "-c:v","libx264","-pix_fmt","yuv420p","-profile:v","high","-crf","20",
                "-movflags","+faststart","-an","promo.mp4"]
           print("rendering...")
