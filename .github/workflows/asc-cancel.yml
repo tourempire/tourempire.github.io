@@ -1,0 +1,33 @@
+name: ASC beküldés visszavonás
+on: {workflow_dispatch: {}}
+jobs:
+  cancel:
+    runs-on: ubuntu-latest
+    env:
+      ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+      ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+      ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+    steps:
+      - run: pip install pyjwt cryptography requests
+      - run: |
+          python3 - <<'PY'
+          import os,time,jwt,requests
+          kid=os.environ['ASC_KEY_ID'];iss=os.environ['ASC_ISSUER_ID'];p8=os.environ['ASC_KEY_P8']
+          if 'BEGIN PRIVATE KEY' not in p8:
+              import base64;p8=base64.b64decode(p8).decode()
+          def H():
+              t=jwt.encode({'iss':iss,'iat':int(time.time()),'exp':int(time.time())+1200,'aud':'appstoreconnect-v1'},p8,algorithm='ES256',headers={'kid':kid,'typ':'JWT'})
+              return {'Authorization':'Bearer '+t,'Content-Type':'application/json'}
+          B='https://api.appstoreconnect.apple.com'
+          apps=requests.get(B+'/v1/apps',headers=H()).json().get('data',[])
+          app=next((a for a in apps if 'tourempire' in (a['attributes'].get('bundleId') or '')),None);aid=app['id']
+          rss=requests.get(B+'/v1/reviewSubmissions',headers=H(),params={'filter[app]':aid,'filter[platform]':'IOS','limit':20}).json().get('data',[])
+          for r in rss:
+            st=r['attributes'].get('state')
+            if st in ('WAITING_FOR_REVIEW','PENDING'):
+              x=requests.patch(B+f"/v1/reviewSubmissions/{r['id']}",headers=H(),json={'data':{'type':'reviewSubmissions','id':r['id'],'attributes':{'canceled':True}}})
+              print('CANCEL',r['id'],st,'->',x.status_code)
+          time.sleep(4)
+          vs=requests.get(B+f'/v1/apps/{aid}/appStoreVersions',headers=H(),params={'limit':10}).json().get('data',[])
+          for v in vs: print('verzio:',v['attributes'].get('versionString'),v['attributes'].get('appStoreState'))
+          PY
