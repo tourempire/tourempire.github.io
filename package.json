@@ -1,6 +1,6 @@
 {
   "name": "tour-empire",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": true,
   "description": "Tour Empire — zenei turnémenedzser-szimulátor (natív burok a webes játék köré)",
   "type": "module",
