@@ -84,11 +84,12 @@ jobs:
               pa=pl['attributes']
               body_attrs={k:pa.get(k) for k in FIELDS if pa.get(k)}
               body_attrs['whatsNew']=WNEW
+              body_attrs['marketingUrl']='https://tourempire.github.io'   # app-ads.txt domain-egyezeshez
               if loc in newlocs:
                   nl=newlocs[loc]
-                  # ha mar van description (atmasolodott), csak a whatsNew-t irjuk; kulonben mindent
+                  # ha mar van description (atmasolodott), csak a whatsNew + marketingUrl; kulonben mindent
                   if nl['attributes'].get('description'):
-                      upd={'whatsNew':WNEW}
+                      upd={'whatsNew':WNEW,'marketingUrl':'https://tourempire.github.io'}
                   else:
                       upd=body_attrs
                   req('PATCH', f"/v1/appStoreVersionLocalizations/{nl['id']}", {'data':{'type':'appStoreVersionLocalizations','id':nl['id'],'attributes':upd}})
