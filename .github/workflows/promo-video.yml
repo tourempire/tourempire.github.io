@@ -1,0 +1,123 @@
+name: Promo videó
+
+# A live webes játékot "leforgatja" (Playwright képernyőrögzítés, telefon 9:16),
+# majd ffmpeg-gel feliratozza és 1080x1920 MP4-re rendereli (~15 mp, TikTok/Reels).
+
+on:
+  workflow_dispatch:
+    inputs:
+      url:
+        description: 'A jatek URL-je (?dbg)'
+        default: 'https://tourempire.github.io/?dbg'
+
+jobs:
+  vid:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deps
+        run: |
+          pip install playwright
+          python -m playwright install --with-deps chromium
+          sudo apt-get install -y ffmpeg fonts-dejavu-core >/dev/null 2>&1 || sudo apt-get install -y ffmpeg
+      - name: Forgatas + render
+        env:
+          GAME_URL: ${{ inputs.url }}
+        run: |
+          python3 - <<'PY'
+          import os, time, glob, subprocess
+          from playwright.sync_api import sync_playwright
+          URL=os.environ['GAME_URL']
+
+          START = r"""() => { try { var G=window.__G;
+            try{ if(G.setLang) G.setLang('en'); }catch(e){}
+            var b=[].slice.call(document.querySelectorAll('button'));
+            var qs=b.find(function(x){return /quick start|gyors ind|default|alapbe/i.test(x.textContent);});
+            if(!qs) qs=b.find(function(x){return /^\s*(start|kezd)/i.test(x.textContent);});
+            if(qs){qs.click();return 'clicked';} return 'no-btn';
+          } catch(e){ return 'ERR '+e.message; } }"""
+          STATE = r"""() => { try { var G=window.__G,S=G.S;
+            try{ if(G.setLang) G.setLang('en'); }catch(e){}
+            S.money=2650000;S.rep=380;S.week=32;S.credits=925;S.toursDone=7;S.earned=8200000;S.agency='Star Agency';
+            S.obDone=true;S.ob=null;S.started=true;S.detail=null;
+            var all=Object.keys(G.AM);S.roster=all.slice(0,3);
+            S.roster.forEach(function(id,i){var st=G.artState(id);
+              try{Object.keys(st.fans).forEach(function(r){st.fans[r]=Math.round(50+Math.random()*44);});}catch(e){}
+              st.streams=Math.round(2200000+i*1800000);st.morale=84;st.energy=90;st.hype=0.28;st.rels=3+i;st.lastCritic=82;});
+            if(G.save)G.save();
+            var m=document.getElementById('modal');if(m){m.className='';m.innerHTML='';}
+            var ob=document.getElementById('ob');if(ob){ob.className='';ob.innerHTML='';}
+            var obb=document.getElementById('obbar');if(obb){obb.className='';obb.innerHTML='';}
+            S.tab='iroda';G.render();return 'ok';
+          } catch(e){ return 'ERR '+e.message; } }"""
+          TR="()=>{try{var G=window.__G;if(G.translateUI){G.translateUI(document.body);G.translateUI(document.getElementById('app'));}}catch(e){}}"
+
+          with sync_playwright() as p:
+              b=p.chromium.launch(args=['--no-sandbox'])
+              ctx=b.new_context(viewport={'width':480,'height':854}, device_scale_factor=2,
+                                record_video_dir='vid', record_video_size={'width':960,'height':1708})
+              pg=ctx.new_page()
+              pg.goto(URL, wait_until='networkidle', timeout=60000)
+              pg.wait_for_function("() => window.__G && window.__G.S && window.__G.render", timeout=30000)
+              print("start:", pg.evaluate(START)); pg.wait_for_timeout(600)
+              print("state:", pg.evaluate(STATE)); pg.wait_for_timeout(900)
+              pg.evaluate(TR)
+              t_beats=time.time()   # innentol a "hasznos" resz
+              def beat(js, hold, scroll=0):
+                  if js:
+                      try: pg.evaluate(js)
+                      except Exception as e: print('beat err',e)
+                  pg.evaluate(TR); pg.wait_for_timeout(250)
+                  if scroll:
+                      steps=10
+                      for k in range(steps):
+                          pg.evaluate("(y)=>{var v=document.getElementById('view')||document.scrollingElement;if(v)v.scrollTop+=y;}", scroll/steps)
+                          pg.wait_for_timeout(int(hold/steps))
+                  else:
+                      pg.wait_for_timeout(hold)
+              beat("()=>{window.__G.S.tab='iroda';window.__G.S.detail=null;window.__G.render();}", 2600)
+              beat("()=>{window.__G.S.tab='eloadok';window.__G.S.detail=null;window.__G.render();}", 2600)
+              beat("()=>{var G=window.__G;G.S.tab='eloadok';G.openDetail(G.S.roster[0]);}", 3000, scroll=340)
+              beat("()=>{var G=window.__G;G.S.detail=null;G.S.tab='studio';G.S.studio=G.S.roster[0];G.render();}", 3000, scroll=300)
+              beat("()=>{var G=window.__G;G.S.tab='fejlesztes';G.render();}", 2800)
+              beat("()=>{window.__G.S.tab='iroda';window.__G.render();}", 1800)
+              offset=max(0.0, t_beats - (pg.video and 0 or 0))
+              ctx.close(); b.close()
+          raw=sorted(glob.glob('vid/*.webm'))[0]
+          print("raw video:", raw)
+
+          # Az offset = a setup ota eltelt ido a felvetel kezdetetol. A felvetel a page letrejottekor indul;
+          # a goto+setup kb. ennyi ido. Vagjuk le az elejet, hogy egybol a jatekmenet lassodjon.
+          # (Biztonsagi tartalek: -0.4s)
+          import json
+          # pontos offset: a page letrejotte ota t_beats-ig; ezt kozelitjuk a felvetel-hosszbol
+          # egyszeruen: a vegso 15s-t vesszuk a vegerol visszafele nem jo (setup az elejen van),
+          # ezert az elejerol vagunk annyit, amennyi a beats elott eltelt.
+          # Playwright nem adja ki a pontos video-kezdest; tapasztalati vagas: 5.5s.
+          CUT=5.5
+          font="/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
+          caps=[(0.2,2.9,"BUILD YOUR MUSIC EMPIRE",70),
+                (3.0,5.6,"Sign the biggest stars",58),
+                (5.7,8.7,"Grow their fame and fanbase",54),
+                (8.8,11.7,"Release hits in the studio",56),
+                (11.8,15.0,"TOUR EMPIRE  -  Free on the App Store",56)]
+          vf=["scale=1080:1920:flags=lanczos","setsar=1","fps=30"]
+          for a,z,txt,fs in caps:
+              vf.append(("drawtext=fontfile=%s:text=%s:fontcolor=white:fontsize=%d:box=1:boxcolor=black@0.45:"
+                         "boxborderw=22:x=(w-text_w)/2:y=h-430:enable='between(t,%s,%s)'")%(font,txt,fs,a,z))
+          vfs=",".join(vf)
+          cmd=["ffmpeg","-y","-ss",str(CUT),"-i",raw,"-t","15","-vf",vfs,
+               "-c:v","libx264","-pix_fmt","yuv420p","-profile:v","high","-crf","20",
+               "-movflags","+faststart","-an","promo.mp4"]
+          print("ffmpeg:", " ".join(cmd[:6]),"...")
+          r=subprocess.run(cmd, capture_output=True, text=True)
+          print(r.stderr[-1500:])
+          print("OUT exists:", os.path.exists('promo.mp4'), os.path.getsize('promo.mp4') if os.path.exists('promo.mp4') else 0)
+          PY
+      - name: Feltoltes
+        uses: actions/upload-artifact@v4
+        with:
+          name: promo-video
+          path: |
+            promo.mp4
+            vid/*.webm
+          if-no-files-found: warn
