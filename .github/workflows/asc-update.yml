@@ -51,7 +51,7 @@ jobs:
               return r.json()
           def req(m,u,body=None):
               r=requests.request(m,B+u,headers=H(),json=body); print(m,u.split('?')[0],'->',r.status_code)
-              if r.status_code>=300: print('   ',r.text[:500])
+              if r.status_code>=300: print('   ',r.text[:2500])
               return r
 
           apps=g('/v1/apps').get('data',[])
